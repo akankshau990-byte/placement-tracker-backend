@@ -4,14 +4,16 @@ const Application = require("../models/Application");
 const addApplication = async (req ,res) => {
 
   try{
-    const {companyName , role ,status} =  req.body ;
+    const {companyName , role ,status , appliedDate, interviewDate} =  req.body ;
      const  userId = req.user.userId;
      
      const newApp = await Application.create({
      companyName,
       role,
       status,
-      userId
+      userId,
+      appliedDate: appliedDate || Date.now(),
+      interviewDate: interviewDate || null,
      });
 
      res.status(201).json({ message: "Application added!", application: newApp });
