@@ -1,29 +1,29 @@
 const jwt = require("jsonwebtoken");
-require('dotenv').config();
-
+require("dotenv").config();
 
 const verifyToken = (req, res, next) => {
+  try {
+    // Both req.headers.authorization & req.header("Authorization") fallbacks
+    const authHeader = req.headers.authorization || req.header("Authorization");
 
-try{
-const authHeader = req.header("Authorization");
-if (!authHeader) {
-    return res.status(401).json({
-        message: "No token provided"
-    });
-}
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).json({
+        message: "Access Denied. No token or malformed header provided.",
+      });
+    }
 
-const token = authHeader.split(" ")[1];
+    const token = authHeader.split(" ")[1];
 
-const verified = jwt.verify(
-    token,
-    process.env.JWT_SECRET
-);
+    if (!token) {
+      return res.status(401).json({ message: "Token missing from Bearer format." });
+    }
 
-req.user = verified;
-next();
-}
-catch (error) {
-    res.status(400).json({ error: "Invalid Token!" });
+    const verified = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = verified;
+    next();
+  } catch (error) {
+    console.error("JWT Verification Error:", error.message);
+    return res.status(401).json({ message: "Invalid or expired token. Please log in again." });
   }
 };
 
