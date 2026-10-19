@@ -5,6 +5,7 @@ const {
   loginUser,
   getProfile,
   updatePassword,
+  updateAvatar,
 } = require("../controllers/authController");
 const verifyToken = require("../middleware/authMiddleware");
 
@@ -15,5 +16,5 @@ router.post("/login", loginUser);
 // Protected Routes
 router.get("/profile", verifyToken, getProfile);
 router.put("/change-password", verifyToken, updatePassword);
-
+router.put("/update-avatar", verifyToken, updateAvatar);
 module.exports = router;

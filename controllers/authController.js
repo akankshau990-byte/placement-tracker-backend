@@ -100,9 +100,29 @@ const updatePassword = async (req, res) => {
   }
 };
 
+// Update Profile Picture / Avatar
+const updateAvatar = async (req, res) => {
+  try {
+    const { avatar } = req.body;
+    const userId = req.user?.userId || req.user?._id || req.user?.id;
+
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    user.avatar = avatar;
+    await user.save();
+
+    res.status(200).json({ message: "Profile picture updated successfully!", user });
+  } catch (error) {
+    res.status(500).json({ message: "Server error updating profile picture" });
+  }
+};
+
+// module.exports mein updateAvatar add karna mat bhoolna
 module.exports = {
   registerUser,
   loginUser,
   getProfile,
   updatePassword,
+  updateAvatar,
 };
