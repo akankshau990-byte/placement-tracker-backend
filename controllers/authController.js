@@ -54,15 +54,22 @@ const loginUser = async (req, res) => {
     res.status(500).json({ error: "Something went wrong" });
   }
 };
-// Get Current User Profile (Handles both req.user.userId and req.user._id)
+// Get Current User Profile
 const getProfile = async (req, res) => {
   try {
-    const userId = req.user.userId || req.user._id || req.user.id;
+    const userId = req.user?.userId || req.user?._id || req.user?.id;
+    if (!userId) {
+      return res.status(400).json({ message: "User ID missing from token" });
+    }
+
     const user = await User.findById(userId).select("-password");
-    if (!user) return res.status(404).json({ message: "User not found" });
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
     res.status(200).json(user);
   } catch (error) {
-    console.log("Profile Fetch Error:", error);
+    console.error("Profile Fetch Error:", error);
     res.status(500).json({ message: "Server error fetching profile" });
   }
 };
