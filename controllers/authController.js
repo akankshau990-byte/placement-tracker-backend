@@ -8,7 +8,6 @@ const registerUser = async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
-    // Password ko Hash (Encrypt) karna
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
@@ -19,7 +18,7 @@ const registerUser = async (req, res) => {
     });
 
     res.status(201).json({
-      message: "User register successfully!",
+      message: "User registered successfully!",
       user: newUser,
     });
   } catch (error) {
@@ -40,8 +39,9 @@ const loginUser = async (req, res) => {
     if (!isPasswordValid)
       return res.status(401).json({ message: "Invalid password" });
 
+    // Explicitly set userId in token
     const token = jwt.sign(
-      { userId: user._id },
+      { userId: user._id.toString() },
       process.env.JWT_SECRET,
       { expiresIn: "1d" }
     );
@@ -54,10 +54,12 @@ const loginUser = async (req, res) => {
     res.status(500).json({ error: "Something went wrong" });
   }
 };
-// Get Current User Profile
+
+// Get Current User Profile (Bulletproof Extraction)
 const getProfile = async (req, res) => {
   try {
     const userId = req.user?.userId || req.user?._id || req.user?.id;
+
     if (!userId) {
       return res.status(400).json({ message: "User ID missing from token" });
     }
@@ -70,15 +72,17 @@ const getProfile = async (req, res) => {
     res.status(200).json(user);
   } catch (error) {
     console.error("Profile Fetch Error:", error);
-    res.status(500).json({ message: "Server error fetching profile" });
+    res.status(500).json({ message: "Server error fetching profile details" });
   }
 };
+
 // Update Password
 const updatePassword = async (req, res) => {
   try {
     const { oldPassword, newPassword } = req.body;
-    const user = await User.findById(req.user.userId);
+    const userId = req.user?.userId || req.user?._id || req.user?.id;
 
+    const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
 
     const isMatch = await bcrypt.compare(oldPassword, user.password);
@@ -92,7 +96,7 @@ const updatePassword = async (req, res) => {
 
     res.status(200).json({ message: "Password updated successfully!" });
   } catch (error) {
-    res.status(500).json({ error: "Server error updating password" });
+    res.status(500).json({ message: "Server error updating password" });
   }
 };
 
