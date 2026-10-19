@@ -12,20 +12,21 @@ const applicationRoutes = require("./routes/applicationRoutes");
 app.use(express.json());
 app.use(cors());
 
-// Health Check Route (Render ke Port Scan ke liye)
+// Root test route
 app.get("/", (req, res) => {
   res.send("Welcome to Placement Tracker API");
 });
 
+// Mounting Auth & Application Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/applications", applicationRoutes);
 
-// Server ko '0.0.0.0' host par bind karein taaki Render detect kar sake
+// Server listen
 app.listen(port, "0.0.0.0", () => {
   console.log(`Server started and listening on port : ${port}`);
 });
 
-// MongoDB Connection Background mein handle hone dein
+// Database connection
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => {

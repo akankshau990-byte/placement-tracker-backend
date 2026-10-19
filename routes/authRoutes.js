@@ -8,10 +8,11 @@ const {
 } = require("../controllers/authController");
 const verifyToken = require("../middleware/authMiddleware");
 
+// Public Routes
 router.post("/register", registerUser);
 router.post("/login", loginUser);
 
-// Profile & Password routes (Authenticated)
+// Protected Routes
 router.get("/profile", verifyToken, getProfile);
 router.put("/change-password", verifyToken, updatePassword);
 
