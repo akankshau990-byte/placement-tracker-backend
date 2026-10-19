@@ -27,6 +27,10 @@ const applicationSchema = new mongoose.Schema(
     interviewDate: {
       type: Date,
     },
+    notes :{
+    type:string ,
+    default:" " ,
+    }
   },
   { timestamps: true }
 );
