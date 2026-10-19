@@ -54,18 +54,18 @@ const loginUser = async (req, res) => {
     res.status(500).json({ error: "Something went wrong" });
   }
 };
-
-// Get User Profile
+// Get Current User Profile (Handles both req.user.userId and req.user._id)
 const getProfile = async (req, res) => {
   try {
-    const user = await User.findById(req.user.userId).select("-password");
+    const userId = req.user.userId || req.user._id || req.user.id;
+    const user = await User.findById(userId).select("-password");
     if (!user) return res.status(404).json({ message: "User not found" });
     res.status(200).json(user);
   } catch (error) {
-    res.status(500).json({ error: "Server error fetching profile" });
+    console.log("Profile Fetch Error:", error);
+    res.status(500).json({ message: "Server error fetching profile" });
   }
 };
-
 // Update Password
 const updatePassword = async (req, res) => {
   try {
