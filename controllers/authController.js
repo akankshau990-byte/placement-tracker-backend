@@ -1,4 +1,4 @@
-const User = require("../models/User");
+const User = require("./models/User");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { Resend } = require("resend");
@@ -117,7 +117,7 @@ const updateAvatar = async (req, res) => {
   }
 };
 
-// 6. FORGOT PASSWORD (DYNAMIC OTP EMAIL VIA RESEND)
+// 6. FORGOT PASSWORD (EMAIL DELIVERY + POPUP TESTING OTP)
 const forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
@@ -134,33 +134,38 @@ const forgotPassword = async (req, res) => {
         .json({ message: "Is email se koi account nahi mila!" });
     }
 
-    // 6-Digit OTP String Generate
+    // Generate 6-Digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     user.resetPasswordOTP = otp;
-    user.resetPasswordExpires = Date.now() + 10 * 60 * 1000; // 10 Minutes Expiry
+    user.resetPasswordExpires = Date.now() + 10 * 60 * 1000; // 10 Min Expiry
     await user.save();
 
-    // Send Mail via Resend API
-    await resend.emails.send({
-      from: "Placement Tracker <onboarding@resend.dev>",
-      to: user.email,
-      subject: "Password Reset OTP - Placement Tracker",
-      html: `
-        <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
-          <h2 style="color: #007bff;">Placement Tracker</h2>
-          <p>Aapka Password Reset OTP hai:</p>
-          <h1 style="color: #007bff; letter-spacing: 5px; background: #f4f4f4; padding: 10px; display: inline-block;">${otp}</h1>
-          <p>Ye OTP agle 10 minutes ke liye valid hai.</p>
-        </div>
-      `,
-    });
+    // Send Real Email via Resend
+    try {
+      await resend.emails.send({
+        from: "Placement Tracker <onboarding@resend.dev>",
+        to: user.email,
+        subject: "Password Reset OTP - Placement Tracker",
+        html: `
+          <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
+            <h2 style="color: #007bff;">Placement Tracker</h2>
+            <p>Aapka Password Reset OTP hai:</p>
+            <h1 style="color: #007bff; letter-spacing: 5px; background: #f4f4f4; padding: 10px; display: inline-block;">${otp}</h1>
+            <p>Ye OTP agle 10 minutes ke liye valid hai.</p>
+          </div>
+        `,
+      });
+    } catch (mailErr) {
+      console.log("Resend Mail Sending Skipped/Failed:", mailErr.message);
+    }
 
+    // Response includes OTP so it pops up directly on screen via Toast!
     res.status(200).json({
-      message: "OTP successfully aapke email par bhej diya gaya hai!",
+      message: `OTP sent! (Your OTP: ${otp})`,
     });
   } catch (error) {
-    console.error("Resend Email Error:", error);
-    res.status(500).json({ message: "Email send karne mein issue aaya." });
+    console.error("Forgot Password Error:", error);
+    res.status(500).json({ message: "Server error generating OTP" });
   }
 };
 
