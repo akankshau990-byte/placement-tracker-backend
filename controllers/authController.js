@@ -1,4 +1,4 @@
-const User = require("./models/User");
+const User = require("../models/User");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { Resend } = require("resend");
@@ -14,7 +14,8 @@ const registerUser = async (req, res) => {
       return res.status(400).json({ message: "Please fill all fields" });
     }
 
-    const existingUser = await User.findOne({ email });
+    const cleanEmail = email.trim().toLowerCase();
+    const existingUser = await User.findOne({ email: cleanEmail });
     if (existingUser) {
       return res.status(400).json({ message: "User already exists" });
     }
@@ -23,8 +24,8 @@ const registerUser = async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, salt);
 
     const user = await User.create({
-      name,
-      email,
+      name: name.trim(),
+      email: cleanEmail,
       password: hashedPassword,
     });
 
@@ -38,7 +39,9 @@ const registerUser = async (req, res) => {
 const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
-    const user = await User.findOne({ email });
+    const cleanEmail = email ? email.trim().toLowerCase() : "";
+
+    const user = await User.findOne({ email: cleanEmail });
     if (!user) {
       return res.status(400).json({ message: "Invalid credentials" });
     }
@@ -114,11 +117,16 @@ const updateAvatar = async (req, res) => {
   }
 };
 
-// 6. FORGOT PASSWORD (DYNAMIC OTP EMAIL DELIVERY VIA RESEND)
+// 6. FORGOT PASSWORD (DYNAMIC OTP EMAIL VIA RESEND)
 const forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
-    const user = await User.findOne({ email });
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const user = await User.findOne({ email: cleanEmail });
 
     if (!user) {
       return res
@@ -126,6 +134,7 @@ const forgotPassword = async (req, res) => {
         .json({ message: "Is email se koi account nahi mila!" });
     }
 
+    // 6-Digit OTP String Generate
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     user.resetPasswordOTP = otp;
     user.resetPasswordExpires = Date.now() + 10 * 60 * 1000; // 10 Minutes Expiry
@@ -155,28 +164,44 @@ const forgotPassword = async (req, res) => {
   }
 };
 
-// 7. RESET PASSWORD (VERIFY OTP & UPDATE PASSWORD)
+// 7. RESET PASSWORD (STRICT OTP & EXPIRY VERIFICATION)
 const resetPassword = async (req, res) => {
   try {
     const { email, otp, newPassword } = req.body;
+
+    if (!email || !otp || !newPassword) {
+      return res.status(400).json({ message: "All fields are required!" });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanOtp = otp.toString().trim();
+
     const user = await User.findOne({
-      email,
-      resetPasswordOTP: otp,
+      email: cleanEmail,
+      resetPasswordOTP: cleanOtp,
       resetPasswordExpires: { $gt: Date.now() },
     });
 
     if (!user) {
-      return res.status(400).json({ message: "Invalid ya Expired OTP!" });
+      return res
+        .status(400)
+        .json({ message: "Invalid ya Expired OTP! Dubara OTP send karein." });
     }
 
+    // Hash New Password
     const salt = await bcrypt.genSalt(10);
     user.password = await bcrypt.hash(newPassword, salt);
+    
+    // Clear Reset Fields
     user.resetPasswordOTP = undefined;
     user.resetPasswordExpires = undefined;
     await user.save();
 
-    res.status(200).json({ message: "Password reset successful! Login karein." });
+    res
+      .status(200)
+      .json({ message: "Password reset successful! Ab login karein." });
   } catch (error) {
+    console.error("Reset Password Error:", error);
     res.status(500).json({ message: "Server error resetting password" });
   }
 };
