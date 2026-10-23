@@ -1,6 +1,10 @@
-const User = require("../models/User");
+const User = require("./models/User");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const { Resend } = require("resend");
+
+// Resend API Transporter Configuration
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 // 1. REGISTER USER
 const registerUser = async (req, res) => {
@@ -110,30 +114,48 @@ const updateAvatar = async (req, res) => {
   }
 };
 
-// 6. FORGOT PASSWORD
+// 6. FORGOT PASSWORD (DYNAMIC OTP EMAIL DELIVERY VIA RESEND)
 const forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
     const user = await User.findOne({ email });
 
     if (!user) {
-      return res.status(404).json({ message: "Is email se koi account nahi mila!" });
+      return res
+        .status(404)
+        .json({ message: "Is email se koi account nahi mila!" });
     }
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     user.resetPasswordOTP = otp;
-    user.resetPasswordExpires = Date.now() + 10 * 60 * 1000;
+    user.resetPasswordExpires = Date.now() + 10 * 60 * 1000; // 10 Minutes Expiry
     await user.save();
 
+    // Send Mail via Resend API
+    await resend.emails.send({
+      from: "Placement Tracker <onboarding@resend.dev>",
+      to: user.email,
+      subject: "Password Reset OTP - Placement Tracker",
+      html: `
+        <div style="font-family: Arial, sans-serif; padding: 20px; color: #333;">
+          <h2 style="color: #007bff;">Placement Tracker</h2>
+          <p>Aapka Password Reset OTP hai:</p>
+          <h1 style="color: #007bff; letter-spacing: 5px; background: #f4f4f4; padding: 10px; display: inline-block;">${otp}</h1>
+          <p>Ye OTP agle 10 minutes ke liye valid hai.</p>
+        </div>
+      `,
+    });
+
     res.status(200).json({
-      message: `OTP generated successfully! OTP: ${otp}`,
+      message: "OTP successfully aapke email par bhej diya gaya hai!",
     });
   } catch (error) {
-    res.status(500).json({ message: "Server error during forgot password" });
+    console.error("Resend Email Error:", error);
+    res.status(500).json({ message: "Email send karne mein issue aaya." });
   }
 };
 
-// 7. RESET PASSWORD
+// 7. RESET PASSWORD (VERIFY OTP & UPDATE PASSWORD)
 const resetPassword = async (req, res) => {
   try {
     const { email, otp, newPassword } = req.body;
