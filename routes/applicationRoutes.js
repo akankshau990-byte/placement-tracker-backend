@@ -1,17 +1,21 @@
 const express = require("express");
 const router = express.Router();
 const {
-  addApplication,
   getApplications,
+  addApplication,
   updateApplication,
+  updateStatus,
   deleteApplication,
 } = require("../controllers/applicationController");
-const verifyToken = require("../middleware/authMiddleware");
+const authMiddleware = require("../middleware/authMiddleware");
 
-// Subhi routes par verifyToken middleware lagaya gaya hai
-router.post("/", verifyToken, addApplication);
-router.get("/", verifyToken, getApplications);
-router.put("/:id", verifyToken, updateApplication);
-router.delete("/:id", verifyToken, deleteApplication);
+// All routes are protected by authMiddleware
+router.use(authMiddleware);
+
+router.get("/", getApplications);
+router.post("/", addApplication);
+router.put("/:id", updateApplication);
+router.patch("/:id/status", updateStatus); // Drag & Drop Status Update Route
+router.delete("/:id", deleteApplication);
 
 module.exports = router;

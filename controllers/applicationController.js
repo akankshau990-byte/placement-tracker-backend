@@ -1,87 +1,126 @@
 const Application = require("../models/Application");
 
-// 1. Add New Application
+// 1. GET ALL APPLICATIONS FOR LOGGED-IN USER
+const getApplications = async (req, res) => {
+  try {
+    const userId = req.user?.userId || req.user?._id || req.user?.id;
+    const applications = await Application.find({ userId }).sort({
+      createdAt: -1,
+    });
+    res.status(200).json(applications);
+  } catch (error) {
+    console.error("Error fetching applications:", error);
+    res.status(500).json({ message: "Server error fetching applications" });
+  }
+};
+
+// 2. ADD NEW APPLICATION
 const addApplication = async (req, res) => {
   try {
-    const { companyName, role, status, appliedDate, interviewDate, notes } = req.body;
-    const userId = req.user.userId;
+    const { companyName, role, status, appliedDate, interviewDate, notes } =
+      req.body;
+
+    if (!companyName || !role) {
+      return res
+        .status(400)
+        .json({ message: "Company Name and Role are required!" });
+    }
+
+    const userId = req.user?.userId || req.user?._id || req.user?.id;
 
     const newApp = await Application.create({
-      companyName,
-      role,
-      status,
       userId,
+      companyName: companyName.trim(),
+      role: role.trim(),
+      status: status || "Applied",
       appliedDate: appliedDate || Date.now(),
       interviewDate: interviewDate || null,
       notes: notes || "",
     });
 
-    res.status(201).json({ message: "Application added!", application: newApp });
+    res.status(201).json(newApp);
   } catch (error) {
-    console.log("🔥 Add Application Error:", error);
-    res.status(500).json({ error: "Failed to add application" });
+    console.error("Error adding application:", error);
+    res.status(500).json({ message: "Server error adding application" });
   }
 };
 
-// 2. Get All User Applications
-const getApplications = async (req, res) => {
-  try {
-    const userId = req.user.userId;
-    const application = await Application.find({ userId: userId }).sort({ createdAt: -1 });
-    res.status(200).json(application);
-  } catch (error) {
-    res.status(500).json({ error: "Failed to fetch applications" });
-  }
-};
-
-// 3. Update Existing Application (For Notes & Date Edits)
+// 3. UPDATE APPLICATION (FULL EDIT)
 const updateApplication = async (req, res) => {
   try {
-    const { companyName, role, status, appliedDate, interviewDate, notes } = req.body;
+    const { id } = req.params;
+    const userId = req.user?.userId || req.user?._id || req.user?.id;
 
-    const updatedApp = await Application.findByIdAndUpdate(
-      req.params.id,
-      {
-        companyName,
-        role,
-        status,
-        appliedDate,
-        interviewDate: interviewDate || null,
-        notes: notes || "",
-      },
-      { new: true }
+    const updatedApp = await Application.findOneAndUpdate(
+      { _id: id, userId },
+      req.body,
+      { new: true, runValidators: true }
     );
 
     if (!updatedApp) {
-      return res.status(404).json({ error: "Application not found" });
+      return res.status(404).json({ message: "Application not found" });
     }
 
-    res.status(200).json({ message: "Application updated!", application: updatedApp });
+    res.status(200).json(updatedApp);
   } catch (error) {
-    console.log("🔥 Update Application Error:", error);
-    res.status(500).json({ error: "Failed to update application" });
+    console.error("Error updating application:", error);
+    res.status(500).json({ message: "Server error updating application" });
   }
 };
 
-// 4. Delete Application
-const deleteApplication = async (req, res) => {
+// 4. UPDATE APPLICATION STATUS (PATCH FOR KANBAN DRAG & DROP)
+const updateStatus = async (req, res) => {
   try {
-    const deletedApp = await Application.findByIdAndDelete(req.params.id);
-    
-    if (!deletedApp) {
-      return res.status(404).json({ error: "Application not found" });
+    const { id } = req.params;
+    const { status } = req.body;
+
+    const validStatuses = ["Applied", "Interviewing", "Selected", "Rejected"];
+    if (!status || !validStatuses.includes(status)) {
+      return res.status(400).json({ message: "Invalid status value" });
     }
 
-    res.status(200).json({ message: "Application deleted successfully!" });
+    const userId = req.user?.userId || req.user?._id || req.user?.id;
+
+    const application = await Application.findOneAndUpdate(
+      { _id: id, userId },
+      { status },
+      { new: true }
+    );
+
+    if (!application) {
+      return res.status(404).json({ message: "Application not found" });
+    }
+
+    res.status(200).json(application);
   } catch (error) {
-    console.log("🔥 Delete Application Error:", error);
-    res.status(500).json({ error: "Failed to delete application" });
+    console.error("Error updating status:", error);
+    res.status(500).json({ message: "Server error updating status" });
+  }
+};
+
+// 5. DELETE APPLICATION
+const deleteApplication = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user?.userId || req.user?._id || req.user?.id;
+
+    const deletedApp = await Application.findOneAndDelete({ _id: id, userId });
+
+    if (!deletedApp) {
+      return res.status(404).json({ message: "Application not found" });
+    }
+
+    res.status(200).json({ message: "Application deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting application:", error);
+    res.status(500).json({ message: "Server error deleting application" });
   }
 };
 
 module.exports = {
-  addApplication,
   getApplications,
+  addApplication,
   updateApplication,
+  updateStatus,
   deleteApplication,
 };
