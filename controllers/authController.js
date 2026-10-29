@@ -1,4 +1,4 @@
-const User = require("./models/User");
+const User = require("../models/User");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { Resend } = require("resend");
@@ -7,6 +7,7 @@ const { Resend } = require("resend");
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 // 1. REGISTER USER
+ 
 const registerUser = async (req, res) => {
   try {
     const { name, email, password } = req.body;
