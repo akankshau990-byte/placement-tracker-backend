@@ -10,14 +10,14 @@ const resend = new Resend(process.env.RESEND_API_KEY || "re_123456789_dummy_key"
 const registerUser = async (req, res) => {
   try {
     const { name, email, password } = req.body;
-    if (!name || !email || !password) {
+    if (!name || !name.trim() || !email || !password) {
       return res.status(400).json({ message: "Please fill all fields" });
     }
 
-    if (password.length < 8) {
-      return res
-        .status(400)
-        .json({ message: "Password must be at least 8 characters long" });
+    if (/\s/.test(password) || password.trim().length < 8) {
+      return res.status(400).json({
+        message: "Password must be at least 8 characters long without spaces",
+      });
     }
 
     const cleanEmail = email.trim().toLowerCase();
@@ -87,10 +87,10 @@ const updatePassword = async (req, res) => {
     const { oldPassword, newPassword } = req.body;
     const userId = req.user?.userId || req.user?._id || req.user?.id;
 
-    if (!newPassword || newPassword.length < 8) {
-      return res
-        .status(400)
-        .json({ message: "New password must be at least 8 characters long" });
+    if (!newPassword || /\s/.test(newPassword) || newPassword.trim().length < 8) {
+      return res.status(400).json({
+        message: "New password must be at least 8 characters long without spaces",
+      });
     }
 
     const user = await User.findById(userId);
@@ -190,10 +190,10 @@ const resetPassword = async (req, res) => {
       return res.status(400).json({ message: "All fields are required!" });
     }
 
-    if (newPassword.length < 8) {
-      return res
-        .status(400)
-        .json({ message: "New password must be at least 8 characters long" });
+    if (/\s/.test(newPassword) || newPassword.trim().length < 8) {
+      return res.status(400).json({
+        message: "New password must be at least 8 characters long without spaces",
+      });
     }
 
     const cleanEmail = email.trim().toLowerCase();
