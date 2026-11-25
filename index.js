@@ -11,6 +11,7 @@ const applicationRoutes = require("./routes/applicationRoutes");
 
 app.use(express.json());
 app.use(cors());
+app.use("/api/jobs", require("./routes/jobRoutes"));
 
 // Root test route
 app.get("/", (req, res) => {
