@@ -1,12 +1,12 @@
 const User = require("../models/User");
-import { genSalt, hash, compare } from "bcryptjs";
-import { sign } from "jsonwebtoken";
-import { Resend } from "resend";
+const { genSalt, hash, compare } = require("bcryptjs");
+const { sign } = require("jsonwebtoken");
+const { Resend } = require("resend");
 
 // Resend API Transporter Configuration
 const resend = new Resend(process.env.RESEND_API_KEY || "re_123456789_dummy_key");
+
 // 1. REGISTER USER
- 
 const registerUser = async (req, res) => {
   try {
     const { name, email, password } = req.body;
@@ -14,8 +14,14 @@ const registerUser = async (req, res) => {
       return res.status(400).json({ message: "Please fill all fields" });
     }
 
+    if (password.length < 8) {
+      return res
+        .status(400)
+        .json({ message: "Password must be at least 8 characters long" });
+    }
+
     const cleanEmail = email.trim().toLowerCase();
-    const existingUser = await findOne({ email: cleanEmail });
+    const existingUser = await User.findOne({ email: cleanEmail });
     if (existingUser) {
       return res.status(400).json({ message: "User already exists" });
     }
@@ -23,7 +29,7 @@ const registerUser = async (req, res) => {
     const salt = await genSalt(10);
     const hashedPassword = await hash(password, salt);
 
-    const user = await create({
+    const user = await User.create({
       name: name.trim(),
       email: cleanEmail,
       password: hashedPassword,
@@ -41,7 +47,7 @@ const loginUser = async (req, res) => {
     const { email, password } = req.body;
     const cleanEmail = email ? email.trim().toLowerCase() : "";
 
-    const user = await findOne({ email: cleanEmail });
+    const user = await User.findOne({ email: cleanEmail });
     if (!user) {
       return res.status(400).json({ message: "Invalid credentials" });
     }
@@ -67,7 +73,7 @@ const loginUser = async (req, res) => {
 const getProfile = async (req, res) => {
   try {
     const userId = req.user?.userId || req.user?._id || req.user?.id;
-    const user = await findById(userId).select("-password");
+    const user = await User.findById(userId).select("-password");
     if (!user) return res.status(404).json({ message: "User not found" });
     res.status(200).json(user);
   } catch (error) {
@@ -81,7 +87,13 @@ const updatePassword = async (req, res) => {
     const { oldPassword, newPassword } = req.body;
     const userId = req.user?.userId || req.user?._id || req.user?.id;
 
-    const user = await findById(userId);
+    if (!newPassword || newPassword.length < 8) {
+      return res
+        .status(400)
+        .json({ message: "New password must be at least 8 characters long" });
+    }
+
+    const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
 
     const isMatch = await compare(oldPassword, user.password);
@@ -105,7 +117,7 @@ const updateAvatar = async (req, res) => {
     const { avatar } = req.body;
     const userId = req.user?.userId || req.user?._id || req.user?.id;
 
-    const user = await findById(userId);
+    const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
 
     user.avatar = avatar;
@@ -126,7 +138,7 @@ const forgotPassword = async (req, res) => {
     }
 
     const cleanEmail = email.trim().toLowerCase();
-    const user = await findOne({ email: cleanEmail });
+    const user = await User.findOne({ email: cleanEmail });
 
     if (!user) {
       return res
@@ -178,10 +190,16 @@ const resetPassword = async (req, res) => {
       return res.status(400).json({ message: "All fields are required!" });
     }
 
+    if (newPassword.length < 8) {
+      return res
+        .status(400)
+        .json({ message: "New password must be at least 8 characters long" });
+    }
+
     const cleanEmail = email.trim().toLowerCase();
     const cleanOtp = otp.toString().trim();
 
-    const user = await findOne({
+    const user = await User.findOne({
       email: cleanEmail,
       resetPasswordOTP: cleanOtp,
       resetPasswordExpires: { $gt: Date.now() },
@@ -190,7 +208,7 @@ const resetPassword = async (req, res) => {
     if (!user) {
       return res
         .status(400)
-        .json({ message: "Invalid ya Expired OTP! Dubara OTP send karein." });
+        .json({ message: "Invalid or Expired OTP! OTP send again" });
     }
 
     // Hash New Password
@@ -204,14 +222,14 @@ const resetPassword = async (req, res) => {
 
     res
       .status(200)
-      .json({ message: "Password reset successful! Ab login karein." });
+      .json({ message: "Password reset successful! Login now" });
   } catch (error) {
     console.error("Reset Password Error:", error);
     res.status(500).json({ message: "Server error resetting password" });
   }
 };
 
-export default {
+module.exports = {
   registerUser,
   loginUser,
   getProfile,
