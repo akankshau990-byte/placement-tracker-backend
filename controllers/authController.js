@@ -1,11 +1,10 @@
 const User = require("../models/User");
-const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
-const { Resend } = require("resend");
+import { genSalt, hash, compare } from "bcryptjs";
+import { sign } from "jsonwebtoken";
+import { Resend } from "resend";
 
 // Resend API Transporter Configuration
-const resend = new Resend(process.env.RESEND_API_KEY);
-
+const resend = new Resend(process.env.RESEND_API_KEY || "re_123456789_dummy_key");
 // 1. REGISTER USER
  
 const registerUser = async (req, res) => {
@@ -16,15 +15,15 @@ const registerUser = async (req, res) => {
     }
 
     const cleanEmail = email.trim().toLowerCase();
-    const existingUser = await User.findOne({ email: cleanEmail });
+    const existingUser = await findOne({ email: cleanEmail });
     if (existingUser) {
       return res.status(400).json({ message: "User already exists" });
     }
 
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
+    const salt = await genSalt(10);
+    const hashedPassword = await hash(password, salt);
 
-    const user = await User.create({
+    const user = await create({
       name: name.trim(),
       email: cleanEmail,
       password: hashedPassword,
@@ -42,17 +41,17 @@ const loginUser = async (req, res) => {
     const { email, password } = req.body;
     const cleanEmail = email ? email.trim().toLowerCase() : "";
 
-    const user = await User.findOne({ email: cleanEmail });
+    const user = await findOne({ email: cleanEmail });
     if (!user) {
       return res.status(400).json({ message: "Invalid credentials" });
     }
 
-    const isMatch = await bcrypt.compare(password, user.password);
+    const isMatch = await compare(password, user.password);
     if (!isMatch) {
       return res.status(400).json({ message: "Invalid credentials" });
     }
 
-    const token = jwt.sign(
+    const token = sign(
       { userId: user._id },
       process.env.JWT_SECRET || "secretkey",
       { expiresIn: "7d" }
@@ -68,7 +67,7 @@ const loginUser = async (req, res) => {
 const getProfile = async (req, res) => {
   try {
     const userId = req.user?.userId || req.user?._id || req.user?.id;
-    const user = await User.findById(userId).select("-password");
+    const user = await findById(userId).select("-password");
     if (!user) return res.status(404).json({ message: "User not found" });
     res.status(200).json(user);
   } catch (error) {
@@ -82,16 +81,16 @@ const updatePassword = async (req, res) => {
     const { oldPassword, newPassword } = req.body;
     const userId = req.user?.userId || req.user?._id || req.user?.id;
 
-    const user = await User.findById(userId);
+    const user = await findById(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    const isMatch = await bcrypt.compare(oldPassword, user.password);
+    const isMatch = await compare(oldPassword, user.password);
     if (!isMatch) {
       return res.status(400).json({ message: "Incorrect current password" });
     }
 
-    const salt = await bcrypt.genSalt(10);
-    user.password = await bcrypt.hash(newPassword, salt);
+    const salt = await genSalt(10);
+    user.password = await hash(newPassword, salt);
     await user.save();
 
     res.status(200).json({ message: "Password updated successfully!" });
@@ -106,7 +105,7 @@ const updateAvatar = async (req, res) => {
     const { avatar } = req.body;
     const userId = req.user?.userId || req.user?._id || req.user?.id;
 
-    const user = await User.findById(userId);
+    const user = await findById(userId);
     if (!user) return res.status(404).json({ message: "User not found" });
 
     user.avatar = avatar;
@@ -127,7 +126,7 @@ const forgotPassword = async (req, res) => {
     }
 
     const cleanEmail = email.trim().toLowerCase();
-    const user = await User.findOne({ email: cleanEmail });
+    const user = await findOne({ email: cleanEmail });
 
     if (!user) {
       return res
@@ -182,7 +181,7 @@ const resetPassword = async (req, res) => {
     const cleanEmail = email.trim().toLowerCase();
     const cleanOtp = otp.toString().trim();
 
-    const user = await User.findOne({
+    const user = await findOne({
       email: cleanEmail,
       resetPasswordOTP: cleanOtp,
       resetPasswordExpires: { $gt: Date.now() },
@@ -195,8 +194,8 @@ const resetPassword = async (req, res) => {
     }
 
     // Hash New Password
-    const salt = await bcrypt.genSalt(10);
-    user.password = await bcrypt.hash(newPassword, salt);
+    const salt = await genSalt(10);
+    user.password = await hash(newPassword, salt);
     
     // Clear Reset Fields
     user.resetPasswordOTP = undefined;
@@ -212,7 +211,7 @@ const resetPassword = async (req, res) => {
   }
 };
 
-module.exports = {
+export default {
   registerUser,
   loginUser,
   getProfile,
