@@ -34,6 +34,7 @@ app.get("/", (req, res) => {
 });
 
 // Helper: Extract real user name & ID from JWT token
+// Helper: Extract real user name & ID from JWT token
 const getUserFromToken = async (token) => {
   try {
     if (!token) return null;
@@ -42,18 +43,25 @@ const getUserFromToken = async (token) => {
     const uid = decoded.id || decoded._id || decoded.userId || decoded.user?.id;
     if (!uid) return null;
 
-    const user = await User.findById(uid).select("name email");
+    // Fetch full user doc so we catch name, username, fullName, or email
+    const user = await User.findById(uid).lean();
     if (!user) return { id: String(uid), name: "Student" };
+
+    const realName =
+      (user.name && user.name.trim()) ||
+      (user.username && user.username.trim()) ||
+      (user.fullName && user.fullName.trim()) ||
+      (user.email ? user.email.split("@")[0] : "Student");
 
     return {
       id: String(user._id),
-      name: user.name || user.email.split("@")[0],
+      name: realName,
     };
-  } catch {
+  } catch (err) {
+    console.error("getUserFromToken error:", err.message);
     return null;
   }
 };
-
 // Get current logged-in user's real name & ID for Community Hub
 app.get("/api/community-user/me", async (req, res) => {
   const userInfo = await getUserFromToken(req.headers.authorization);
