@@ -110,4 +110,70 @@ Ensure every single question is unique and tailored to ${companyName}.`;
   }
 });
 
+// POST /api/questions/chat — AI Placement Mentor Chatbot
+router.post("/chat", async (req, res) => {
+  const { message, history = [], userContext = "" } = req.body;
+
+  if (!message || !message.trim()) {
+    return res.status(400).json({ message: "Message is required" });
+  }
+
+  const apiKey = process.env.GEMINI_API_KEY;
+
+  try {
+    if (!apiKey) {
+      throw new Error("GEMINI_API_KEY not configured");
+    }
+
+    // Pichhle 6 messages ka context formatted rakhein taaki conversation natural lage
+    const recentHistory = history
+      .slice(-6)
+      .map((m) => `${m.sender === "user" ? "Student" : "Mentor"}: ${m.text}`)
+      .join("\n");
+
+    const systemPrompt = `You are an expert, friendly Indian Tech Placement Mentor built inside a student's Placement Tracker web app.
+Student's current tracked applications context: ${userContext || "Preparing for SDE / Full-Stack / Tech internships & placements."}
+
+Guidelines:
+- Give practical, structured, concise advice (DSA topics, company-specific prep, project explanation, mock interview questions, cold email/referral templates).
+- Keep answers crisp, encouraging, and easy to read (use short bullet points, avoid messy raw markdown symbols like ###).
+- If the student asks for a mock interview, ask 1 focused question at a time and evaluate their answer.
+
+Recent Conversation:
+${recentHistory}
+
+Student's New Question: ${message.trim()}
+Mentor's Reply:`;
+
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: systemPrompt }] }],
+          generationConfig: {
+            temperature: 0.7,
+          },
+        }),
+      }
+    );
+
+    const data = await response.json();
+    const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+
+    if (!reply) {
+      throw new Error("Empty response from Gemini API");
+    }
+
+    res.status(200).json({ reply: reply.trim() });
+  } catch (error) {
+    console.error("AI Chatbot error:", error.message);
+    res.status(200).json({
+      reply:
+        "now AI server is busy , but for craking placement top 3 focus areas: 1) Arrays, Strings, Trees & DP (Striver Sheet), 2) OS, DBMS, CN & OOPs basics, aur 3) clear end to end architecture of your mern project!",
+    });
+  }
+});
+
 module.exports = router;
