@@ -1,6 +1,47 @@
 const express = require("express");
 const router = express.Router();
 
+// Helper function to call Gemini with automatic model fallback & exact error logging
+async function callGemini(prompt, temperature = 0.7) {
+  const apiKey = (process.env.GEMINI_API_KEY || "").trim();
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY is missing in environment variables");
+  }
+
+  const models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+  let lastError = "Unknown Gemini error";
+
+  for (const model of models) {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature },
+        }),
+      }
+    );
+
+    const data = await response.json();
+
+    if (response.ok && data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+      return data.candidates[0].content.parts[0].text.trim();
+    }
+
+    lastError = data?.error?.message || `HTTP ${response.status} on ${model}`;
+    console.error(`Gemini (${model}) failed:`, lastError);
+
+    // If API key itself is invalid, no need to retry other models
+    if (lastError.toLowerCase().includes("api key")) {
+      break;
+    }
+  }
+
+  throw new Error(lastError);
+}
+
 // POST /api/questions/generate
 router.post("/generate", async (req, res) => {
   const { companyName, role, existingQuestions, batchNumber = 1 } = req.body;
@@ -10,10 +51,8 @@ router.post("/generate", async (req, res) => {
   }
 
   const targetRole = role || "Software Developer";
-  const apiKey = process.env.GEMINI_API_KEY;
   const hasExisting = existingQuestions && existingQuestions.trim().length > 20;
 
-  // Purane saare questions ki numbered lines nikal kar strict blocklist banayein
   const previousLines = hasExisting
     ? existingQuestions
         .split("\n")
@@ -31,10 +70,6 @@ router.post("/generate", async (req, res) => {
   const currentFocus = batchFocusMap[(batchNumber - 1) % batchFocusMap.length];
 
   try {
-    if (!apiKey) {
-      throw new Error("GEMINI_API_KEY not configured");
-    }
-
     const exclusionInstruction = hasExisting
       ? `\nCRITICAL RULE: This is Batch #${batchNumber}. Focus specifically on: ${currentFocus}.\nYou MUST NOT repeat or rephrase ANY of the already generated questions listed below:\n"""\n${previousLines}\n"""\nGenerate 15 COMPLETELY DIFFERENT, fresh questions.`
       : `\nFocus on: ${currentFocus}.`;
@@ -42,7 +77,7 @@ router.post("/generate", async (req, res) => {
     const prompt = `You are an expert Indian Tech Placement Mentor helping a B.Tech CSE student crack "${companyName}" for the role "${targetRole}".
 ${exclusionInstruction}
 
-Provide a complete, actionable preparation kit in plain text (NO markdown asterisks ** or # symbols) with these exact sections:
+Provide a complete, actionable preparation kit in plain English text (NO markdown asterisks ** or # symbols) with these exact sections:
 
 ${
   !hasExisting
@@ -66,33 +101,11 @@ ${
 
 Ensure every single question is unique and tailored to ${companyName}.`;
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0.9,
-          },
-        }),
-      }
-    );
-
-    const data = await response.json();
-    const generatedText =
-      data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-
-    if (!generatedText) {
-      throw new Error("Empty response from Gemini API");
-    }
-
-    res.status(200).json({ questions: generatedText.trim() });
+    const generatedText = await callGemini(prompt, 0.9);
+    res.status(200).json({ questions: generatedText });
   } catch (error) {
     console.error("AI Question fallback triggered:", error.message);
 
-    // Fallback mein bhi batch-wise alag questions taaki kabhi repeat na dikhe
     const fallbackBatches = [
       `=== ${companyName.toUpperCase()} (${targetRole}) PREP KIT - BATCH 1 ===
 [DSA] 1. Kadane's Algorithm | 2. Two Sum & Subarray Sum K | 3. Reverse Linked List | 4. Level Order Traversal | 5. Valid Parentheses | 6. Coin Change DP
@@ -118,23 +131,17 @@ router.post("/chat", async (req, res) => {
     return res.status(400).json({ message: "Message is required" });
   }
 
-  const apiKey = process.env.GEMINI_API_KEY;
-
   try {
-    if (!apiKey) {
-      throw new Error("GEMINI_API_KEY not configured");
-    }
-
-    // Pichhle 6 messages ka context formatted rakhein taaki conversation natural lage
     const recentHistory = history
       .slice(-6)
       .map((m) => `${m.sender === "user" ? "Student" : "Mentor"}: ${m.text}`)
       .join("\n");
 
-    const systemPrompt = `You are an expert, friendly Indian Tech Placement Mentor built inside a student's Placement Tracker web app.
+    const systemPrompt = `You are an expert, friendly Tech Placement Mentor built inside a student's Placement Tracker web app.
 Student's current tracked applications context: ${userContext || "Preparing for SDE / Full-Stack / Tech internships & placements."}
 
 Guidelines:
+- Always reply in clear, professional English.
 - Give practical, structured, concise advice (DSA topics, company-specific prep, project explanation, mock interview questions, cold email/referral templates).
 - Keep answers crisp, encouraging, and easy to read (use short bullet points, avoid messy raw markdown symbols like ###).
 - If the student asks for a mock interview, ask 1 focused question at a time and evaluate their answer.
@@ -145,33 +152,12 @@ ${recentHistory}
 Student's New Question: ${message.trim()}
 Mentor's Reply:`;
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: systemPrompt }] }],
-          generationConfig: {
-            temperature: 0.7,
-          },
-        }),
-      }
-    );
-
-    const data = await response.json();
-    const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-
-    if (!reply) {
-      throw new Error("Empty response from Gemini API");
-    }
-
-    res.status(200).json({ reply: reply.trim() });
+    const reply = await callGemini(systemPrompt, 0.7);
+    res.status(200).json({ reply });
   } catch (error) {
     console.error("AI Chatbot error:", error.message);
     res.status(200).json({
-      reply:
-        "now AI server is busy , but for craking placement top 3 focus areas: 1) Arrays, Strings, Trees & DP (Striver Sheet), 2) OS, DBMS, CN & OOPs basics, aur 3) clear end to end architecture of your mern project!",
+      reply: `Gemini API Notice: ${error.message}`,
     });
   }
 });
