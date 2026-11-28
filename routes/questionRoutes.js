@@ -23,16 +23,19 @@ async function callGemini(prompt, temperature = 0.7) {
       (m) =>
         m.supportedGenerationMethods &&
         m.supportedGenerationMethods.includes("generateContent") &&
-        m.name.includes("gemini")
+        m.name.includes("gemini") &&
+        !m.name.includes("embedding") &&
+        !m.name.includes("imagen")
     )
-    .map((m) => m.name); // e.g. "models/gemini-2.5-flash"
+    .map((m) => m.name);
 
-  // Prefer fastest/latest flash models first
+  // Prioritize latest Gemini 3.1 & 3 models first (for new API keys)
   const preferredOrder = [
-    "models/gemini-2.5-flash",
-    "models/gemini-2.5-flash-lite",
-    "models/gemini-2.5-pro",
+    "models/gemini-3-flash-preview",
+    "models/gemini-3.1-flash-lite-preview",
+    "models/gemini-3.1-pro-preview",
     "models/gemini-flash-latest",
+    "models/gemini-2.5-flash",
   ];
 
   const modelsToTry = [
@@ -46,7 +49,7 @@ async function callGemini(prompt, temperature = 0.7) {
 
   let lastError = "Unknown Gemini error";
 
-  for (const fullModelName of modelsToTry.slice(0, 3)) {
+  for (const fullModelName of modelsToTry) {
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/${fullModelName}:generateContent?key=${apiKey}`,
       {
@@ -62,6 +65,7 @@ async function callGemini(prompt, temperature = 0.7) {
     const data = await response.json();
 
     if (response.ok && data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+      console.log(`Success using model: ${fullModelName}`);
       return data.candidates[0].content.parts[0].text.trim();
     }
 
