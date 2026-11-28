@@ -3,12 +3,15 @@ const mongoose = require("mongoose");
 const cors = require("cors");
 const http = require("http");
 const { Server } = require("socket.io");
+const jwt = require("jsonwebtoken");
 require("dotenv").config();
 
 const authRoutes = require("./routes/authRoutes");
 const applicationRoutes = require("./routes/applicationRoutes");
 const jobRoutes = require("./routes/jobRoutes");
 const questionRoutes = require("./routes/questionRoutes");
+
+const User = require("./models/User");
 const CommunityMessage = require("./models/CommunityMessage");
 const { startReminderCron } = require("./utils/reminderCron");
 
@@ -19,21 +22,48 @@ const server = http.createServer(app);
 app.use(cors());
 app.use(express.json());
 
-// Socket.io Real-Time Setup
-const io = new Server(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"],
-  },
-});
-
-// REST API Routes
+// API Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/applications", applicationRoutes);
 app.use("/api/jobs", jobRoutes);
 app.use("/api/questions", questionRoutes);
 
-// Fetch last 50 messages for a domain room
+// Health Check Route
+app.get("/", (req, res) => {
+  res.send("Placement Tracker Backend API is running!");
+});
+
+// Helper: Extract real user name & ID from JWT token
+const getUserFromToken = async (token) => {
+  try {
+    if (!token) return null;
+    const cleanToken = token.replace("Bearer ", "").trim();
+    const decoded = jwt.verify(cleanToken, process.env.JWT_SECRET);
+    const uid = decoded.id || decoded._id || decoded.userId || decoded.user?.id;
+    if (!uid) return null;
+
+    const user = await User.findById(uid).select("name email");
+    if (!user) return { id: String(uid), name: "Student" };
+
+    return {
+      id: String(user._id),
+      name: user.name || user.email.split("@")[0],
+    };
+  } catch {
+    return null;
+  }
+};
+
+// Get current logged-in user's real name & ID for Community Hub
+app.get("/api/community-user/me", async (req, res) => {
+  const userInfo = await getUserFromToken(req.headers.authorization);
+  if (!userInfo) {
+    return res.status(401).json({ message: "Invalid token" });
+  }
+  res.status(200).json(userInfo);
+});
+
+// REST API to fetch last 50 messages of a domain room
 app.get("/api/community/:room", async (req, res) => {
   try {
     const messages = await CommunityMessage.find({ room: req.params.room })
@@ -41,17 +71,18 @@ app.get("/api/community/:room", async (req, res) => {
       .limit(50);
     res.status(200).json(messages);
   } catch (error) {
-    console.error("Error fetching community messages:", error.message);
     res.status(500).json({ message: "Failed to fetch room messages" });
   }
 });
 
-// Health Check Route
-app.get("/", (req, res) => {
-  res.send("Placement Tracker API with AI & Real-Time Community is running!");
+// Real-Time Socket.io Setup
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"],
+  },
 });
 
-// Socket.io Event Handlers
 io.on("connection", (socket) => {
   socket.on("join_room", (room) => {
     socket.join(room);
@@ -59,13 +90,15 @@ io.on("connection", (socket) => {
 
   socket.on("send_message", async (data) => {
     try {
-      const { room, senderName, senderId, text } = data;
+      const { room, token, text } = data;
       if (!room || !text || !text.trim()) return;
+
+      const userInfo = await getUserFromToken(token);
 
       const savedMsg = await CommunityMessage.create({
         room,
-        senderName: senderName || "Student",
-        senderId: senderId || "",
+        senderName: userInfo?.name || "Student",
+        senderId: userInfo?.id || "",
         text: text.trim(),
       });
 
