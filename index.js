@@ -3,10 +3,9 @@ const app = express();
 const mongoose = require("mongoose");
 const cors = require("cors");
 require("dotenv").config();
-
 const questionRoutes = require("./routes/questionRoutes");
 const port = process.env.PORT || 8000;
-
+const { startReminderCron } = require("./utils/reminderCron");
 const authRoutes = require("./routes/authRoutes");
 const applicationRoutes = require("./routes/applicationRoutes");
 
@@ -33,7 +32,9 @@ mongoose
   .connect(process.env.MONGO_URI)
   .then(() => {
     console.log("MongoDB Atlas Connected Successfully!");
+    startReminderCron();
   })
+  
   .catch((err) => {
     console.log("MongoDB Connection Error: ", err);
   });
