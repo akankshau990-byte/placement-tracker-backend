@@ -1,19 +1,54 @@
 const express = require("express");
 const router = express.Router();
 
-// Helper function to call Gemini with automatic model fallback & exact error logging
+// Auto-detects an available Gemini model for your API key and generates content
 async function callGemini(prompt, temperature = 0.7) {
   const apiKey = (process.env.GEMINI_API_KEY || "").trim();
   if (!apiKey) {
     throw new Error("GEMINI_API_KEY is missing in environment variables");
   }
 
-  const models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+  // 1. Fetch active models supported by this exact API key
+  const listRes = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`
+  );
+  const listData = await listRes.json();
+
+  if (!listRes.ok) {
+    throw new Error(listData?.error?.message || `ListModels failed (${listRes.status})`);
+  }
+
+  const supportedModels = (listData.models || [])
+    .filter(
+      (m) =>
+        m.supportedGenerationMethods &&
+        m.supportedGenerationMethods.includes("generateContent") &&
+        m.name.includes("gemini")
+    )
+    .map((m) => m.name); // e.g. "models/gemini-2.5-flash"
+
+  // Prefer fastest/latest flash models first
+  const preferredOrder = [
+    "models/gemini-2.5-flash",
+    "models/gemini-2.5-flash-lite",
+    "models/gemini-2.5-pro",
+    "models/gemini-flash-latest",
+  ];
+
+  const modelsToTry = [
+    ...preferredOrder.filter((p) => supportedModels.includes(p)),
+    ...supportedModels.filter((s) => !preferredOrder.includes(s)),
+  ];
+
+  if (modelsToTry.length === 0) {
+    throw new Error("No generateContent-capable Gemini models found for this API key.");
+  }
+
   let lastError = "Unknown Gemini error";
 
-  for (const model of models) {
+  for (const fullModelName of modelsToTry.slice(0, 3)) {
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/${fullModelName}:generateContent?key=${apiKey}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -30,18 +65,12 @@ async function callGemini(prompt, temperature = 0.7) {
       return data.candidates[0].content.parts[0].text.trim();
     }
 
-    lastError = data?.error?.message || `HTTP ${response.status} on ${model}`;
-    console.error(`Gemini (${model}) failed:`, lastError);
-
-    // If API key itself is invalid, no need to retry other models
-    if (lastError.toLowerCase().includes("api key")) {
-      break;
-    }
+    lastError = data?.error?.message || `HTTP ${response.status} on ${fullModelName}`;
+    console.error(`Gemini (${fullModelName}) failed:`, lastError);
   }
 
   throw new Error(lastError);
 }
-
 // POST /api/questions/generate
 router.post("/generate", async (req, res) => {
   const { companyName, role, existingQuestions, batchNumber = 1 } = req.body;
